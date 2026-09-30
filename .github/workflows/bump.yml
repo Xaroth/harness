@@ -30,12 +30,12 @@ jobs:
       pr: ${{ steps.pr.outputs.pull-request-number }}
       has_app: ${{ env.HAS_APP }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: app token
         if: env.HAS_APP == 'true'
         id: app
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
@@ -49,7 +49,7 @@ jobs:
       - name: open or update PR
         if: steps.bump.outputs.changed == 'true'
         id: pr
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
           branch: bump/versions
