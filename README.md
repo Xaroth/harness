@@ -86,13 +86,19 @@ Do not run `t3 update` inside the container. Claude Code's auto-updater is disab
 
 How releases happen:
 
-- `bump.yml` runs every Monday at 03:17 UTC and on manual trigger. `scripts/bump-versions.sh` runs one resolver per pin from `scripts/bump.d/<name>.sh` (for `ARG <NAME>_VERSION`) and rewrites the Dockerfile. If anything changed it opens or updates one PR on `bump/versions`, labelled `bump`, with an old/new table. It then builds and smoke tests that branch and comments the result on the PR. PRs opened by a workflow get no CI of their own, so this comment is the check.
-- You read the table and the comment, then merge. That is the only manual step.
+- `bump.yml` runs every Monday at 03:17 UTC and on manual trigger. `scripts/bump-versions.sh` runs one resolver per pin from `scripts/bump.d/<name>.sh` (for `ARG <NAME>_VERSION`) and rewrites the Dockerfile. If anything changed it opens or updates one PR on `bump/versions`, labelled `bump`, with an old/new table.
+- With a GitHub App configured (below), the PR is opened as the App and `build.yml` runs on it like any other PR, so the checks show on the PR. Without one, a PR opened by a workflow triggers no CI, so `bump.yml` builds and smoke tests the branch itself and comments the result on the PR.
+- You read the table and the checks, then merge. That is the only manual step.
 - `build.yml` runs on PRs, pushes to main, `v*` tags and manual trigger. It shellchecks the scripts, builds, boots the image and runs the smoke test. On push to main it publishes `:latest` and `:sha-<short>`. If that push merged a bump PR, it also tags the next patch version and publishes `:vX.Y.Z`. Run it manually with `release` set to patch, minor or major for a release by hand.
 
-To add a pin: an `ARG` in the Dockerfile, an install script, and a resolver in `scripts/bump.d/` with the matching name.
+GitHub App setup, optional, once:
 
-No extra tokens or secrets are needed. Everything runs on the default `GITHUB_TOKEN`.
+1. Settings, Developer settings, GitHub Apps, New GitHub App. Any name, webhook off. Repository permissions: Contents read and write, Pull requests read and write.
+2. Generate a private key and download it.
+3. Install the App on this repository.
+4. In the repository: variable `APP_ID` with the App ID, secret `APP_PRIVATE_KEY` with the key file contents.
+
+To add a pin: an `ARG` in the Dockerfile, an install script, and a resolver in `scripts/bump.d/` with the matching name.
 
 ## Building locally
 

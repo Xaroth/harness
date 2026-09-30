@@ -1,10 +1,14 @@
 name: bump
 
 # Weekly: resolve latest upstream versions, open or update one PR on
-# bump/versions, then build and smoke test that branch and comment the result
-# on the PR. PRs opened with GITHUB_TOKEN never trigger build.yml themselves,
-# so the verification happens here instead. Merging the PR is a normal push to
-# main, which build.yml picks up and turns into a patch release.
+# bump/versions. Merging the PR is a normal push to main, which build.yml
+# picks up and turns into a patch release.
+#
+# With a GitHub App (vars.APP_ID + secrets.APP_PRIVATE_KEY, contents and
+# pull-requests write) the PR is opened as the App and build.yml runs on it
+# like any PR. Without one, PRs opened with GITHUB_TOKEN trigger nothing, so
+# this workflow builds and smoke tests the branch itself and comments the
+# result on the PR.
 
 on:
   schedule:
@@ -19,11 +23,22 @@ permissions:
 jobs:
   bump:
     runs-on: ubuntu-latest
+    env:
+      HAS_APP: ${{ secrets.APP_PRIVATE_KEY != '' && vars.APP_ID != '' }}
     outputs:
       changed: ${{ steps.bump.outputs.changed }}
       pr: ${{ steps.pr.outputs.pull-request-number }}
+      has_app: ${{ env.HAS_APP }}
     steps:
       - uses: actions/checkout@v5
+
+      - name: app token
+        if: env.HAS_APP == 'true'
+        id: app
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
 
       - name: bump versions
         id: bump
@@ -36,6 +51,7 @@ jobs:
         id: pr
         uses: peter-evans/create-pull-request@v7
         with:
+          token: ${{ steps.app.outputs.token || secrets.GITHUB_TOKEN }}
           branch: bump/versions
           delete-branch: true
           add-paths: Dockerfile
@@ -47,19 +63,19 @@ jobs:
           body: |
             ${{ steps.bump.outputs.table }}
 
-            The build and smoke test result is posted as a comment below.
             Merging tags the next patch release.
 
+  # Fallback without an App: the PR gets no checks of its own.
   verify:
     needs: bump
-    if: needs.bump.outputs.changed == 'true'
+    if: needs.bump.outputs.changed == 'true' && needs.bump.outputs.has_app != 'true'
     uses: ./.github/workflows/build.yml
     with:
       ref: bump/versions
 
   report:
     needs: [bump, verify]
-    if: always() && needs.bump.outputs.changed == 'true'
+    if: always() && needs.bump.outputs.changed == 'true' && needs.bump.outputs.has_app != 'true'
     runs-on: ubuntu-latest
     steps:
       - name: comment on PR

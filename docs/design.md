@@ -231,11 +231,12 @@ Input: container name. Checks, each one line, exit on first failure:
 - Triggers: `schedule: cron '17 3 * * 1'` (Monday 03:17 UTC), `workflow_dispatch`.
 - Job `bump`: `scripts/bump-versions.sh`, then `peter-evans/create-pull-request` on
   branch `bump/versions`, label `bump`, body = old -> new table. Same PR updated on
-  later runs.
-- Job `verify`: calls `build.yml` with `ref: bump/versions`. Same build + smoke test.
-- Job `report`: comments pass/fail, image size and run link on the PR.
-- Why: PRs opened with `GITHUB_TOKEN` fire no `pull_request` event, so `build.yml`
-  would never run on them by itself. Calling it from here needs no PAT.
+  later runs. If `vars.APP_ID` and `secrets.APP_PRIVATE_KEY` exist, the PR is opened
+  with an App token (`actions/create-github-app-token`), so `build.yml` runs on it as
+  a normal PR.
+- Jobs `verify` and `report`, fallback when no App is configured: call `build.yml`
+  with `ref: bump/versions`, then comment pass/fail, image size and run link on the
+  PR. Needed because PRs opened with `GITHUB_TOKEN` fire no `pull_request` event.
 
 ## README outline
 
