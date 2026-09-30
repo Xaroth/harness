@@ -66,6 +66,27 @@ On first boot `register-mcp` adds two MCP servers to Claude Code at user scope, 
 
 Both render pages with Debian chromium 154. chrome-devtools `navigate_page` needs a `pageId`; call `list_pages` or `new_page` first. `shm_size: 1gb` in compose is for chromium. Remove both with `register-mcp --remove`.
 
+## Open in VS Code over SSH
+
+t3's open-in-editor button only ever produces a `vscode://vscode-remote/ssh-remote+<host><path>` link, and it only offers it when something listens on port 22 inside the container. The host is the container hostname plus `.local`. An SMB mount cannot be targeted this way.
+
+Opt in with `SSHD=1` in `.env`. The entrypoint then starts sshd on port 22, key auth only, user `code`, host key stored on the config volume. Put your public key in the config volume at `ssh/authorized_keys`:
+
+```sh
+docker compose exec -u code harness sh -c 'cat >> /config/ssh/authorized_keys' < ~/.ssh/id_ed25519.pub
+```
+
+Port 22 is published as `SSH_BIND:SSH_PORT` (default `127.0.0.1:2222`). Set `SSH_BIND=0.0.0.0` if VS Code runs on another machine. Then teach ssh where `harness.local` lives, in `~/.ssh/config` on the machine running VS Code:
+
+```
+Host harness.local
+  HostName <server ip>
+  Port 2222
+  User code
+```
+
+No mDNS needed; VS Code Remote SSH resolves the name through that file. Paths in the link match because the workspace is mounted at the same path inside. Change `CONTAINER_HOSTNAME` to use a different name. ssh sessions get the same PATH and config env as the server does, via `/etc/profile.d`.
+
 ## Helpers
 
 Run with `docker compose exec harness <cmd>`.
@@ -113,7 +134,7 @@ docker build -t harness:dev .
 Smoke test (36 checks: health, tool versions, uid, volume perms, MCP registration and handshake, node-pty prebuilt, Node on PATH, Claude config location):
 
 ```sh
-docker run -d --name harness-smoke -e PUID=1000 -e PGID=1000 \
+docker run -d --name harness-smoke -e PUID=1000 -e PGID=1000 -e SSHD=1 \
   -v smoke-config:/config -v smoke-cache:/cache --shm-size 1g harness:dev
 scripts/smoke-test.sh harness-smoke
 ```

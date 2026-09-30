@@ -38,6 +38,7 @@ COPY --chown=code:code docker/bashrc /home/code/.bashrc
 COPY --chown=code:code docker/bash_profile /home/code/.bash_profile
 # /etc/profile resets PATH in login shells, and t3 reads PATH from `bash -ilc`
 COPY docker/profile.sh /etc/profile.d/harness.sh
+COPY docker/sshd_config /etc/ssh/sshd_harness.conf
 
 # config, all on the /config volume
 ENV CLAUDE_CONFIG_DIR=/config/claude \

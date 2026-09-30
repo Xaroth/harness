@@ -23,6 +23,7 @@ from the old draft survives.
 | VCS | jj colocated, author `Xaroth Brook <xaroth+github@xaroth.nl>`, MIT, no remote yet |
 | Registry | `ghcr.io/xaroth/harness`, `:latest` on main, `:vX.Y.Z` on tag |
 | Updates | weekly night cron + manual, one bump PR, merge auto-tags a patch |
+| sshd | opt-in `SSHD=1`, key auth, user code, host key on /config; for t3's open-in-editor VS Code Remote SSH link (`<hostname>.local`) |
 | Telemetry | off by default (`T3_TELEMETRY=0`), PostHog and OTel both disabled |
 | CI check | boot, health endpoint, `--version` for each tool, MCP handshake, volume perms |
 

@@ -86,7 +86,7 @@ jobs:
       - name: start container
         run: >-
           docker run -d --name harness-smoke
-          -e PUID=1000 -e PGID=1000
+          -e PUID=1000 -e PGID=1000 -e SSHD=1
           -v smoke-config:/config -v smoke-cache:/cache
           --shm-size 1g harness:dev
 

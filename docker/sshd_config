@@ -1,0 +1,19 @@
+# Opt-in sshd (SSHD=1), so t3's open-in-editor link can reach the container
+# over VS Code Remote SSH. Key auth only, one user, host key on the config volume.
+Port 22
+ListenAddress 0.0.0.0
+ListenAddress ::
+HostKey /config/ssh/host_keys/ssh_host_ed25519_key
+AuthorizedKeysFile /config/ssh/authorized_keys
+AllowUsers code
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitRootLogin no
+# /config ownership is fixed by the entrypoint after uid remaps, which can lag
+# StrictModes' expectations on the first boot
+StrictModes no
+PidFile /run/sshd.pid
+AcceptEnv LANG LC_*
+# ~/.ssh/environment is written by the entrypoint with the container env
+PermitUserEnvironment yes
+Subsystem sftp /usr/lib/openssh/sftp-server

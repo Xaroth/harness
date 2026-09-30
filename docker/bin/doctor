@@ -97,6 +97,13 @@ run fnm ls
 section "claude mcp"
 run claude mcp list
 
+section "sshd"
+if ss -ltn 2>/dev/null | grep -q ':22 '; then
+  echo "listening on 22 (SSHD=1)"
+else
+  echo "off (set SSHD=1 to enable)"
+fi
+
 section "health"
 port="${T3CODE_PORT:-3773}"
 if command -v curl >/dev/null \

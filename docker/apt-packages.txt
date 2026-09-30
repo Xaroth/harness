@@ -25,6 +25,9 @@ git
 git-lfs
 openssh-client
 
+# opt-in sshd, for VS Code Remote SSH via t3's open-in-editor link
+openssh-server
+
 # build
 build-essential
 clang

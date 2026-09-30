@@ -4,6 +4,7 @@ services:
     image: ${IMAGE:-ghcr.io/xaroth/harness:latest}
     build: .
     restart: unless-stopped
+    hostname: ${CONTAINER_HOSTNAME:-harness}   # becomes <hostname>.local in t3's open-in-editor link
     environment:
       PUID: ${PUID:-1000}
       PGID: ${PGID:-1000}
@@ -11,12 +12,14 @@ services:
       WORKSPACE: ${WORKSPACE:-/workspace}
       PUBLIC_URL: ${PUBLIC_URL:-}
       T3_TELEMETRY: ${T3_TELEMETRY:-0}
+      SSHD: ${SSHD:-0}
     volumes:
       - config:/config
       - cache:/cache          # remove this line for an ephemeral cache
       - ${WORKSPACE_HOST:-./workspace}:${WORKSPACE:-/workspace}
     ports:
       - "127.0.0.1:${PORT:-3773}:3773"
+      - "${SSH_BIND:-127.0.0.1}:${SSH_PORT:-2222}:22"   # only answers when SSHD=1
     shm_size: 1gb             # chromium
     stop_grace_period: 30s
 volumes:
