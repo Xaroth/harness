@@ -217,26 +217,26 @@ Input: container name. Checks, each one line, exit on first failure:
 ## GitHub Actions
 
 `build.yml`
-- Triggers: PR, push to main, push tag `v*`, manual.
-- Steps: shellcheck `docker/` and `scripts/`, `docker compose config`, buildx build
-  with GHA cache, `docker run` + `smoke-test.sh`, then push on main/tag.
-- Tags: `latest` on main, `vX.Y.Z` + `latest` on tag. Also `sha-<short>` always.
-- Permissions: `packages: write`, `contents: read`.
+- Triggers: PR, push to main, push tag `v*`, manual (`release` input), `workflow_call` (`ref` input).
+- Steps: shellcheck, `docker compose config`, buildx build with GHA cache, `docker run`
+  + `smoke-test.sh`, image size to the job summary.
+- Publishes only when not called and the event is a push or a manual release:
+  `latest` + `sha-<short>` on main, `vX.Y.Z` on a tag push. A push to main whose
+  commit message contains "bump pinned versions" also computes the next patch tag,
+  publishes it and pushes the git tag. Tags pushed with `GITHUB_TOKEN` trigger
+  nothing, which is fine because the image is already up.
+- Permissions: `contents: write` (tag), `packages: write`.
 
 `bump.yml`
 - Triggers: `schedule: cron '17 3 * * 1'` (Monday 03:17 UTC), `workflow_dispatch`.
-- Runs `scripts/bump-versions.sh`, which queries npm registry, go.dev, rust
-  channel toml, GitHub releases for cloudflared/jj/fnm, and rewrites the `ARG` lines.
-- If diff: `peter-evans/create-pull-request` with branch `bump/versions`, label `bump`,
-  body listing old -> new per tool. Same PR updated on later runs.
-- Needs a PAT or GitHub App token so the PR triggers `build.yml` (default
-  `GITHUB_TOKEN` PRs don't trigger workflows). Document in README.
-
-`release.yml`
-- Trigger: PR closed with `merged == true` and label `bump`, plus manual with a
-  `level` input (patch/minor/major).
-- Computes next tag from latest `v*`, creates and pushes it. `build.yml` then
-  builds the versioned image.
+- Job `bump`: `scripts/bump-versions.sh`, then `peter-evans/create-pull-request` on
+  branch `bump/versions`, label `bump`, body = old -> new table. Same PR updated on
+  later runs.
+- Job `verify`: calls `build.yml` with `ref: bump/versions`. Same build + smoke test.
+- Job `report`: comments pass/fail, image size and run link on the PR.
+- Why: PRs opened with `GITHUB_TOKEN` fire no `pull_request` event, so `build.yml`
+  would never run on them by itself. Calling it from here needs no PAT. Closing and
+  reopening the PR by hand fires a real event if checks on the PR are wanted.
 
 ## README outline
 
