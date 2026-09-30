@@ -235,8 +235,7 @@ Input: container name. Checks, each one line, exit on first failure:
 - Job `verify`: calls `build.yml` with `ref: bump/versions`. Same build + smoke test.
 - Job `report`: comments pass/fail, image size and run link on the PR.
 - Why: PRs opened with `GITHUB_TOKEN` fire no `pull_request` event, so `build.yml`
-  would never run on them by itself. Calling it from here needs no PAT. Closing and
-  reopening the PR by hand fires a real event if checks on the PR are wanted.
+  would never run on them by itself. Calling it from here needs no PAT.
 
 ## README outline
 
