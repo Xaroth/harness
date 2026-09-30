@@ -53,9 +53,8 @@ harness/
     bump.d/                    <name>.sh per ARG <NAME>_VERSION, _lib.sh shared helpers
   .github/
     workflows/
-      build.yml                PR + main + tag: build, smoke, push
-      bump.yml                 cron + manual: bump-versions.sh, open PR
-      release.yml              on bump PR merge: tag next patch
+      build.yml                PR + main + tag + workflow_call: build, smoke, push, tag release on bump merge
+      bump.yml                 cron + manual: bump-versions.sh, open PR, verify via build.yml, comment
 ```
 
 ## Dockerfile

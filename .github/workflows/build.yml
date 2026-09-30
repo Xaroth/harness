@@ -1,25 +1,59 @@
 name: build
 
+# Builds and smoke tests on every PR and push. Publishes to ghcr on push to
+# main and on v* tags. A push to main that merges a bump PR, or a manual run
+# with release != none, also tags the next version. Called by bump.yml to
+# verify a bump branch before its PR is opened (never publishes then).
+
 on:
   pull_request:
   push:
     branches: [main]
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      release:
+        description: Tag a release from this build
+        type: choice
+        options: [none, patch, minor, major]
+        default: none
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to build
+        type: string
+        required: true
+    outputs:
+      size:
+        value: ${{ jobs.build.outputs.size }}
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 concurrency:
-  group: build-${{ github.ref }}
+  group: build-${{ inputs.ref || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      size: ${{ steps.size.outputs.size }}
+    env:
+      # inputs.ref is only set when called from bump.yml; never publish then.
+      # github.event_name inside a called workflow is the caller's event.
+      PUBLISH: ${{ inputs.ref == '' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.release != 'none')) }}
+      RELEASE: >-
+        ${{ inputs.ref == '' && github.event_name == 'workflow_dispatch' && inputs.release
+         || (inputs.ref == '' && github.event_name == 'push' && github.ref == 'refs/heads/main' && contains(github.event.head_commit.message, 'bump pinned versions') && 'patch')
+         || 'none' }}
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: shellcheck
         run: |
@@ -64,37 +98,64 @@ jobs:
         run: docker logs harness-smoke || true
 
       - name: image size
+        id: size
         run: |
-          size="$(docker image inspect harness:dev --format '{{.Size}}')"
-          echo "Image size: $(numfmt --to=iec --suffix=B "$size") ($size bytes)" >> "$GITHUB_STEP_SUMMARY"
+          bytes="$(docker image inspect harness:dev --format '{{.Size}}')"
+          size="$(numfmt --to=iec --suffix=B "$bytes")"
+          echo "size=$size" >> "$GITHUB_OUTPUT"
+          echo "Image size: $size ($bytes bytes)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: login to ghcr
-        if: github.event_name == 'push'
+        if: env.PUBLISH == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # flavor latest=auto also adds :latest for semver tags
-      - name: metadata
-        if: github.event_name == 'push'
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=semver,pattern=v{{version}}
-            type=sha,prefix=sha-
+      - name: image tags
+        if: env.PUBLISH == 'true'
+        id: tags
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          tags=("$image:sha-${GITHUB_SHA::7}")
+          next=""
+          # latest follows main only; a hand-pushed tag must not move it
+          if [[ "$GITHUB_REF_TYPE" == tag ]]; then
+            tags+=("$image:$GITHUB_REF_NAME")
+          else
+            tags+=("$image:latest")
+          fi
+          if [[ "$RELEASE" != none ]]; then
+            latest="$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname |
+              grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)"
+            latest="${latest:-v0.0.0}"
+            IFS=. read -r major minor patch <<<"${latest#v}"
+            case "$RELEASE" in
+              major) next="v$((major + 1)).0.0" ;;
+              minor) next="v$major.$((minor + 1)).0" ;;
+              patch) next="v$major.$minor.$((patch + 1))" ;;
+            esac
+            tags+=("$image:$next")
+            echo "Release: $latest -> $next" >> "$GITHUB_STEP_SUMMARY"
+          fi
+          printf 'tags=%s\n' "$(IFS=,; echo "${tags[*]}")" >> "$GITHUB_OUTPUT"
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+          printf 'Tags: %s\n' "${tags[*]}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: push
-        if: github.event_name == 'push'
+        if: env.PUBLISH == 'true'
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ steps.tags.outputs.tags }}
           cache-from: type=gha
+
+      # Pushed with GITHUB_TOKEN, so it triggers nothing. The image is already up.
+      - name: tag release
+        if: env.PUBLISH == 'true' && steps.tags.outputs.next != ''
+        run: |
+          git tag "${{ steps.tags.outputs.next }}"
+          git push origin "${{ steps.tags.outputs.next }}"
