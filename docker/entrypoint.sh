@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+log() { printf '[entrypoint] %s\n' "$*" >&2; }
+
+CONFIG_DIRS=(/config /config/claude /config/t3 /config/gh /config/git /config/jj
+  /config/shell /config/shell/bashrc.d /config/ssh)
+CACHE_DIRS=(/cache /cache/go /cache/go/pkg/mod /cache/go/build /cache/go/bin
+  /cache/cargo /cache/uv /cache/uv/python /cache/npm /cache/fnm
+  /cache/fnm/node-versions /cache/fnm/aliases)
+
+WORKSPACE="${WORKSPACE:-/workspace}"
+
+as_code() { gosu code "$@"; }
+
+root_half() {
+  local puid="${PUID:-1000}" pgid="${PGID:-1000}"
+
+  if [ "$(id -g code)" != "$pgid" ]; then
+    log "remapping group code to gid $pgid"
+    groupmod -o -g "$pgid" code
+    usermod -g "$pgid" code
+  fi
+  if [ "$(id -u code)" != "$puid" ]; then
+    log "remapping user code to uid $puid"
+    usermod -o -u "$puid" code
+  fi
+  # usermod only fixes files inside $HOME; npm prefix must stay writable for `npm -g`
+  if [ -d /opt/npm-global ]; then
+    chown "$puid:$pgid" /opt/npm-global /opt/npm-global/bin /opt/npm-global/lib \
+      /opt/npm-global/lib/node_modules 2>/dev/null || true
+  fi
+
+  local d
+  for d in "${CONFIG_DIRS[@]}" "${CACHE_DIRS[@]}"; do
+    mkdir -p "$d"
+    if ! as_code test -w "$d"; then
+      log "chown -R $puid:$pgid $d"
+      chown -R "$puid:$pgid" "$d"
+    fi
+  done
+
+  if [ ! -d "$WORKSPACE" ]; then
+    if mkdir -p "$WORKSPACE" 2>/dev/null; then
+      chown "$puid:$pgid" "$WORKSPACE"
+    else
+      log "warning: workspace $WORKSPACE does not exist and cannot be created"
+    fi
+  elif [ "$(stat -c %u "$WORKSPACE")" = 0 ] && [ -z "$(ls -A "$WORKSPACE")" ]; then
+    # fresh named volume; never touch a populated bind mount
+    chown "$puid:$pgid" "$WORKSPACE"
+  elif ! as_code test -w "$WORKSPACE"; then
+    log "warning: workspace $WORKSPACE not writable by uid $puid; fix ownership on the host"
+  fi
+
+  exec gosu code "$0" "$@"
+}
+
+link_ssh() {
+  chmod 0700 /config/ssh
+  if [ -L "$HOME/.ssh" ]; then
+    ln -sfn /config/ssh "$HOME/.ssh"
+  elif [ -d "$HOME/.ssh" ]; then
+    rmdir "$HOME/.ssh" 2>/dev/null || { log "warning: $HOME/.ssh is a non-empty dir, not linking /config/ssh"; return 0; }
+    ln -s /config/ssh "$HOME/.ssh"
+  else
+    ln -sfn /config/ssh "$HOME/.ssh"
+  fi
+}
+
+link_fnm_node() {
+  local fnm_dir="${FNM_DIR:-/cache/fnm}" node_version="${NODE_VERSION:-}" inst
+  if [ -z "$node_version" ]; then
+    node_version="$(node --version 2>/dev/null || true)"
+    node_version="${node_version#v}"
+  fi
+  if [ -z "$node_version" ]; then
+    log "warning: cannot determine image Node version, skipping fnm link"
+    return 0
+  fi
+
+  mkdir -p "$fnm_dir/node-versions" "$fnm_dir/aliases"
+  for inst in "$fnm_dir"/node-versions/*/installation; do
+    if [ -L "$inst" ] && [ ! -e "$inst" ]; then
+      rm -f "$inst"
+      rmdir "$(dirname "$inst")" 2>/dev/null || true
+    fi
+  done
+
+  inst="$fnm_dir/node-versions/v$node_version/installation"
+  mkdir -p "$(dirname "$inst")"
+  if [ -L "$inst" ] || [ ! -e "$inst" ]; then
+    ln -sfn "/opt/node/v$node_version/installation" "$inst"
+  fi
+
+  # -e follows the link, so a default pointing at a removed version counts as missing
+  if [ ! -e "$fnm_dir/aliases/default" ] && command -v fnm >/dev/null; then
+    rm -f "$fnm_dir/aliases/default"
+    fnm default "$node_version" >/dev/null || log "warning: fnm default $node_version failed"
+  fi
+}
+
+user_half() {
+  # covers --user runs where the root half never ran
+  mkdir -p "${CONFIG_DIRS[@]}" "${CACHE_DIRS[@]}" 2>/dev/null || true
+  link_ssh
+  mkdir -p "$(dirname "${GIT_CONFIG_GLOBAL:-/config/git/config}")"
+  touch "${GIT_CONFIG_GLOBAL:-/config/git/config}"
+
+  link_fnm_node
+
+  register-mcp || log "register-mcp failed; run it manually later"
+
+  if [ "${T3_TELEMETRY:-0}" = 0 ]; then
+    export T3CODE_TELEMETRY_ENABLED=false T3CODE_OTEL_SDK_DISABLED=true
+  fi
+
+  if [ "${1:-}" = serve ]; then
+    log "the pairing link in the t3 banner uses the container bridge IP; run 'docker exec <container> pair' instead"
+    exec t3 serve --host "${T3CODE_HOST:-0.0.0.0}" --port "${T3CODE_PORT:-3773}" "$WORKSPACE"
+  fi
+  exec "$@"
+}
+
+if [ "$(id -u)" = 0 ]; then
+  root_half "$@"
+fi
+user_half "$@"

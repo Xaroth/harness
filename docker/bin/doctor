@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$(id -u)" = 0 ]; then
+  exec gosu code "$0" "$@"
+fi
+
+section() { printf '\n== %s\n' "$*"; }
+
+version() {
+  local name="$1" out; shift
+  if ! command -v "$1" >/dev/null; then
+    printf '%-22s missing\n' "$name"
+    return 0
+  fi
+  out="$(timeout 20 "$@" 2>&1 | head -n1)" || true
+  printf '%-22s %s\n' "$name" "${out:-missing}"
+}
+
+# Classifies a mountpoint from mountinfo: docker volumes have root .../volumes/<name>/_data
+mount_type() {
+  local mp="$1" root fstype
+  root="$(awk -v mp="$mp" '$5 == mp { print $4; exit }' /proc/self/mountinfo)"
+  fstype="$(awk -v mp="$mp" '$5 == mp { for (i = 7; i <= NF; i++) if ($i == "-") { print $(i + 1); exit } }' /proc/self/mountinfo)"
+  if [ -z "$root" ]; then
+    printf '%-8s none (container layer, lost on recreate)\n' "$mp"
+  elif [[ "$root" =~ /volumes/([^/]+)/_data$ ]]; then
+    local name="${BASH_REMATCH[1]}"
+    if [[ "$name" =~ ^[0-9a-f]{64}$ ]]; then
+      printf '%-8s anonymous volume (lost on recreate)\n' "$mp"
+    else
+      printf '%-8s named volume %s\n' "$mp" "$name"
+    fi
+  elif [ "$fstype" = tmpfs ]; then
+    printf '%-8s tmpfs\n' "$mp"
+  else
+    printf '%-8s bind %s\n' "$mp" "$root"
+  fi
+  if [ -d "$mp" ] && [ ! -w "$mp" ]; then
+    printf '%-8s not writable by uid %s\n' "$mp" "$(id -u)"
+  fi
+}
+
+run() {
+  local out
+  if ! command -v "$1" >/dev/null; then
+    echo "missing"
+    return 0
+  fi
+  out="$(timeout 60 "$@" 2>&1)" || true
+  printf '%s\n' "${out:-missing}"
+}
+
+section "versions"
+version t3 t3 --version
+version claude claude --version
+version node node --version
+version npm npm --version
+version go go version
+version rustc rustc --version
+version cargo cargo --version
+version clang clang --version
+version cmake cmake --version
+version python3 python3 --version
+version uv uv --version
+version fnm fnm --version
+version jj jj --version
+version gh gh --version
+version git git --version
+version git-lfs git-lfs --version
+version cloudflared cloudflared --version
+version ffmpeg ffmpeg -version
+version convert convert --version
+version psql psql --version
+version redis-cli redis-cli --version
+version chromium chromium --version
+version playwright-mcp playwright-mcp --version
+version chrome-devtools-mcp chrome-devtools-mcp --version
+
+section "user"
+echo "uid=$(id -u) gid=$(id -g) home=$HOME"
+
+section "mounts"
+mount_type /config
+mount_type /cache
+mount_type "${WORKSPACE:-/workspace}"
+
+section "claude auth"
+run claude auth status | head -n 10
+
+section "gh auth"
+run gh auth status | head -n 10
+
+section "fnm"
+run fnm ls
+
+section "claude mcp"
+run claude mcp list
+
+section "health"
+port="${T3CODE_PORT:-3773}"
+if command -v curl >/dev/null \
+  && curl -fsS --max-time 5 -o /dev/null "http://127.0.0.1:$port/.well-known/t3/environment" 2>/dev/null; then
+  echo "ok (127.0.0.1:$port)"
+else
+  echo "missing (no answer on 127.0.0.1:$port)"
+fi

@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$(id -u)" = 0 ]; then
+  exec gosu code "$0" "$@"
+fi
+
+log() { printf '[register-mcp] %s\n' "$*" >&2; }
+
+usage() { echo "usage: register-mcp [--remove]"; }
+
+remove=0
+case "${1:-}" in
+  "") ;;
+  --remove) remove=1 ;;
+  -h|--help) usage; exit 0 ;;
+  *) usage >&2; exit 2 ;;
+esac
+
+if ! command -v claude >/dev/null; then
+  log "claude not found"
+  exit 1
+fi
+
+registered() { claude mcp get "$1" >/dev/null 2>&1; }
+
+rc=0
+add() {
+  local name="$1"; shift
+  if registered "$name"; then
+    log "$name already registered"
+    return 0
+  fi
+  if claude mcp add --scope user "$name" -- "$@" >/dev/null; then
+    log "$name registered"
+  else
+    log "failed to register $name"
+    rc=1
+  fi
+}
+
+remove() {
+  local name="$1"
+  if ! registered "$name"; then
+    log "$name not registered"
+    return 0
+  fi
+  if claude mcp remove --scope user "$name" >/dev/null; then
+    log "$name removed"
+  else
+    log "failed to remove $name"
+    rc=1
+  fi
+}
+
+if [ "$remove" = 1 ]; then
+  remove playwright
+  remove chrome-devtools
+else
+  add playwright playwright-mcp --headless --isolated --no-sandbox \
+    --executable-path /usr/bin/chromium
+  add chrome-devtools chrome-devtools-mcp --headless --isolated \
+    --executablePath /usr/bin/chromium --chromeArg=--no-sandbox \
+    --chromeArg=--disable-dev-shm-usage
+fi
+exit "$rc"

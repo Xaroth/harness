@@ -1,0 +1,97 @@
+name: build
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: shellcheck
+        run: shellcheck docker/entrypoint.sh docker/bin/* scripts/*.sh
+
+      - name: compose config
+        env:
+          PUID: "1000"
+          PGID: "1000"
+          TZ: UTC
+          WORKSPACE_HOST: ./workspace
+          WORKSPACE: /workspace
+          PORT: "3773"
+        run: docker compose config -q
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: harness:dev
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: start container
+        run: >-
+          docker run -d --name harness-smoke
+          -e PUID=1000 -e PGID=1000
+          -v smoke-config:/config -v smoke-cache:/cache
+          --shm-size 1g harness:dev
+
+      - name: smoke test
+        run: scripts/smoke-test.sh harness-smoke
+
+      - name: container logs
+        if: failure()
+        run: docker logs harness-smoke || true
+
+      - name: image size
+        run: |
+          size="$(docker image inspect harness:dev --format '{{.Size}}')"
+          echo "Image size: $(numfmt --to=iec --suffix=B "$size") ($size bytes)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: login to ghcr
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # flavor latest=auto also adds :latest for semver tags
+      - name: metadata
+        if: github.event_name == 'push'
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern=v{{version}}
+            type=sha,prefix=sha-
+
+      - name: push
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha

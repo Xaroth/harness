@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ "$(id -u)" = 0 ]; then
+  exec gosu code "$0" "$@"
+fi
+
+usage() {
+  cat <<'USAGE'
+usage: pair [--base-url URL] [--ttl 30d] [--label NAME]
+  --base-url  public URL of this server (default: $PUBLIC_URL)
+  --ttl       pairing link lifetime (default: 30d)
+  --label     optional label for the credential
+USAGE
+}
+
+die() { printf 'pair: %s\n' "$*" >&2; exit 1; }
+
+base_url="${PUBLIC_URL:-}"
+ttl=30d
+label=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --base-url) [ $# -ge 2 ] || die "--base-url needs a value"; base_url="$2"; shift 2 ;;
+    --base-url=*) base_url="${1#*=}"; shift ;;
+    --ttl) [ $# -ge 2 ] || die "--ttl needs a value"; ttl="$2"; shift 2 ;;
+    --ttl=*) ttl="${1#*=}"; shift ;;
+    --label) [ $# -ge 2 ] || die "--label needs a value"; label="$2"; shift 2 ;;
+    --label=*) label="${1#*=}"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+done
+
+[ -n "$base_url" ] || die "no base URL. Set PUBLIC_URL in .env (the https URL your reverse proxy serves) or pass --base-url"
+command -v jq >/dev/null || die "jq not found"
+command -v t3 >/dev/null || die "t3 not found"
+
+args=(auth pairing create --base-url "$base_url" --ttl "$ttl" --json)
+[ -n "$label" ] && args+=(--label "$label")
+
+json="$(t3 "${args[@]}")" || die "t3 auth pairing create failed"
+
+url="$(jq -r '.pairUrl // empty' <<<"$json")"
+[ -n "$url" ] || die "no pairUrl in t3 output: $json"
+token="$(jq -r '.credential // .token // empty' <<<"$json")"
+expires="$(jq -r '.expiresAt // .expiry // .expires // empty' <<<"$json")"
+
+echo "URL:     $url"
+[ -n "$token" ] && echo "Token:   $token"
+[ -n "$expires" ] && echo "Expires: $expires"
+echo
+if command -v qrencode >/dev/null; then
+  qrencode -t ANSIUTF8 "$url"
+else
+  echo "qrencode not found, no QR code"
+fi

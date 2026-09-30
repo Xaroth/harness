@@ -1,0 +1,42 @@
+name: bump
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: bump versions
+        id: bump
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: scripts/bump-versions.sh
+
+      # BUMP_TOKEN: PAT with contents + pull-requests write. PRs opened with the
+      # default GITHUB_TOKEN do not trigger build.yml, so CI would never run.
+      - name: open PR
+        if: steps.bump.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.BUMP_TOKEN || secrets.GITHUB_TOKEN }}
+          branch: bump/versions
+          delete-branch: true
+          add-paths: Dockerfile
+          labels: bump
+          commit-message: "chore: bump pinned versions"
+          author: Xaroth Brook <xaroth+github@xaroth.nl>
+          committer: Xaroth Brook <xaroth+github@xaroth.nl>
+          title: "chore: bump pinned versions"
+          body: |
+            ${{ steps.bump.outputs.table }}
+
+            CI (build) must pass before merge. Merging tags the next patch release.

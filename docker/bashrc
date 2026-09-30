@@ -1,0 +1,16 @@
+# shellcheck shell=bash
+export HISTFILE=/config/shell/bash_history HISTSIZE=100000 HISTFILESIZE=100000
+HISTCONTROL=ignoreboth
+shopt -s histappend
+
+if command -v fnm >/dev/null; then
+  eval "$(fnm env --use-on-cd --shell bash)"
+fi
+
+for f in /config/shell/bashrc.d/*.sh; do
+  # shellcheck source=/dev/null
+  [ -r "$f" ] && . "$f"
+done
+unset f
+
+PS1='\u@\h:\w\$ '
