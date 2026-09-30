@@ -86,13 +86,15 @@ Do not run `t3 update` inside the container. Claude Code's auto-updater is disab
 
 How releases happen:
 
-- `bump.yml` runs every Monday at 03:17 UTC and on manual trigger. `scripts/bump-versions.sh` runs one resolver per pin from `scripts/bump.d/<ARG>.sh` and rewrites the Dockerfile. To add a pin, add an `ARG` and a resolver with the same name. If anything changed it opens or updates one PR on `bump/versions`, labelled `bump`, with an old/new table.
+- `bump.yml` runs every Monday at 03:17 UTC and on manual trigger. `scripts/bump-versions.sh` runs one resolver per pin from `scripts/bump.d/<name>.sh` (for `ARG <NAME>_VERSION`) and rewrites the Dockerfile. To add a pin, add an `ARG` and a resolver with the matching name. If anything changed it opens or updates one PR on `bump/versions`, labelled `bump`, with an old/new table.
 - `build.yml` runs on PRs, pushes to main, `v*` tags and manual trigger. It shellchecks the scripts, builds, boots the image and runs the smoke test. On push it publishes `:latest` (main), `:vX.Y.Z` plus `:latest` (tags) and `:sha-<short>`.
 - `release.yml` tags the next patch when a `bump` PR is merged. It can also be run manually with patch, minor or major.
 
 Set a `BUMP_TOKEN` repository secret: a PAT with contents and pull-requests write. PRs and tags pushed with the default `GITHUB_TOKEN` do not trigger other workflows, so without it bump PRs get no CI and release tags build no image.
 
 ## Building locally
+
+Each install step is a script in `docker/install/`, bind-mounted into its own `RUN` layer. Apt packages are listed in `docker/apt-packages.txt`. Add a tool by adding a script and a `RUN` line.
 
 ```sh
 docker compose build

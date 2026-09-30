@@ -30,7 +30,7 @@ from the old draft survives.
 
 ```
 harness/
-  Dockerfile
+  Dockerfile                   one RUN per docker/install/*.sh, bind-mounted
   compose.yaml
   .env.example
   .dockerignore
@@ -39,6 +39,8 @@ harness/
   README.md
   docs/design.md               these notes
   docker/
+    apt-packages.txt           one package per line, grouped with comments
+    install/                   one script per tool, run at build
     entrypoint.sh
     bin/
       pair                     t3 auth pairing create --base-url ... + QR
@@ -48,7 +50,7 @@ harness/
     smoke-test.sh              runs smoke.d/NN-*.sh in order against a booted container
     smoke.d/                   one file per check group, _lib.sh shared helpers
     bump-versions.sh           runs bump.d/<ARG>.sh per pin, rewrites Dockerfile
-    bump.d/                    one resolver per pin, _lib.sh shared fetch helpers
+    bump.d/                    <name>.sh per ARG <NAME>_VERSION, _lib.sh shared helpers
   .github/
     workflows/
       build.yml                PR + main + tag: build, smoke, push

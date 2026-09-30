@@ -23,7 +23,7 @@ jobs:
 
       - name: shellcheck
         run: |
-          shellcheck -x -P scripts/smoke.d docker/entrypoint.sh docker/bin/* docker/profile.sh scripts/*.sh scripts/bump.d/*.sh
+          shellcheck -x -P scripts/smoke.d docker/entrypoint.sh docker/bin/* docker/profile.sh docker/install/*.sh scripts/*.sh scripts/bump.d/*.sh
           # smoke.d files are sourced fragments; $c and $out come from the caller
           shellcheck -e SC2154,SC2034 scripts/smoke.d/*.sh
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Rewrite pinned ARG versions in the Dockerfile to the latest upstream releases.
-# One resolver per pin lives in bump.d/<ARG_NAME>.sh and prints the new version.
+# One resolver per pin lives in bump.d/<name>.sh (ARG <NAME>_VERSION) and prints
+# the new version. Files starting with _ are helpers, not resolvers.
 # Usage: bump-versions.sh [--dry-run] [--file PATH]
 set -euo pipefail
 
@@ -15,7 +16,7 @@ while (($#)); do
       shift
       ;;
     -h | --help)
-      sed -n '2,4s/^# //p' "$0"
+      sed -n '2,5s/^# //p' "$0"
       exit 0
       ;;
     *)
@@ -28,8 +29,8 @@ done
 [[ -f "$file" ]] || { echo "no such file: $file" >&2; exit 1; }
 
 rows=()
-for script in "$here"/bump.d/*_VERSION.sh; do
-  name="$(basename "$script" .sh)"
+for script in "$here"/bump.d/[!_]*.sh; do
+  name="$(basename "$script" .sh)_VERSION"
   old="$(sed -n "s/^ARG $name=\([^[:space:]]*\).*/\1/p" "$file" | awk 'NR == 1')"
   if [[ -z "$old" ]]; then
     echo "ARG $name not found in $file" >&2
