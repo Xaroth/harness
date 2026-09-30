@@ -86,7 +86,7 @@ Do not run `t3 update` inside the container. Claude Code's auto-updater is disab
 
 How releases happen:
 
-- `bump.yml` runs every Monday at 03:17 UTC and on manual trigger. `scripts/bump-versions.sh` checks upstream for each pinned `ARG` and rewrites the Dockerfile. If anything changed it opens or updates one PR on `bump/versions`, labelled `bump`, with an old/new table.
+- `bump.yml` runs every Monday at 03:17 UTC and on manual trigger. `scripts/bump-versions.sh` runs one resolver per pin from `scripts/bump.d/<ARG>.sh` and rewrites the Dockerfile. To add a pin, add an `ARG` and a resolver with the same name. If anything changed it opens or updates one PR on `bump/versions`, labelled `bump`, with an old/new table.
 - `build.yml` runs on PRs, pushes to main, `v*` tags and manual trigger. It shellchecks the scripts, builds, boots the image and runs the smoke test. On push it publishes `:latest` (main), `:vX.Y.Z` plus `:latest` (tags) and `:sha-<short>`.
 - `release.yml` tags the next patch when a `bump` PR is merged. It can also be run manually with patch, minor or major.
 
@@ -108,7 +108,7 @@ docker run -d --name harness-smoke -e PUID=1000 -e PGID=1000 \
 scripts/smoke-test.sh harness-smoke
 ```
 
-The test expects uid 1000.
+Checks live in `scripts/smoke.d/NN-name.sh` and run in order; the first failure stops the run. The test expects uid 1000.
 
 ## Security
 

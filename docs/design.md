@@ -45,8 +45,10 @@ harness/
       doctor                   what's installed, signed in, healthy
       register-mcp             claude mcp add for both browser servers (idempotent)
   scripts/
-    smoke-test.sh              run against a booted container
-    bump-versions.sh           rewrites ARG pins in Dockerfile, prints changes
+    smoke-test.sh              runs smoke.d/NN-*.sh in order against a booted container
+    smoke.d/                   one file per check group, _lib.sh shared helpers
+    bump-versions.sh           runs bump.d/<ARG>.sh per pin, rewrites Dockerfile
+    bump.d/                    one resolver per pin, _lib.sh shared fetch helpers
   .github/
     workflows/
       build.yml                PR + main + tag: build, smoke, push

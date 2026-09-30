@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Rewrite pinned ARG versions in the Dockerfile to the latest upstream releases.
+# One resolver per pin lives in bump.d/<ARG_NAME>.sh and prints the new version.
 # Usage: bump-versions.sh [--dry-run] [--file PATH]
 set -euo pipefail
 
-file="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/Dockerfile"
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+file="$here/../Dockerfile"
 dry_run=0
 while (($#)); do
   case "$1" in
@@ -13,7 +15,7 @@ while (($#)); do
       shift
       ;;
     -h | --help)
-      sed -n '2,3s/^# //p' "$0"
+      sed -n '2,4s/^# //p' "$0"
       exit 0
       ;;
     *)
@@ -25,52 +27,15 @@ while (($#)); do
 done
 [[ -f "$file" ]] || { echo "no such file: $file" >&2; exit 1; }
 
-fetch() { curl -fsSL --retry 3 --max-time 30 "$@"; }
-
-gh_fetch() {
-  local auth=()
-  [[ -n "${GITHUB_TOKEN:-}" ]] && auth=(-H "Authorization: Bearer $GITHUB_TOKEN")
-  fetch -H "Accept: application/vnd.github+json" "${auth[@]}" "$@"
-}
-
-npm_latest() { fetch "https://registry.npmjs.org/${1/\//%2f}/latest" | jq -r .version; }
-gh_latest() { gh_fetch "https://api.github.com/repos/$1/releases/latest" | jq -r .tag_name; }
-
-latest() {
-  case "$1" in
-    NODE_VERSION)
-      fetch https://nodejs.org/dist/index.json |
-        jq -r '[.[] | select(.version | startswith("v24."))][0].version' | sed 's/^v//'
-      ;;
-    T3_VERSION) npm_latest t3 ;;
-    CLAUDE_CODE_VERSION) npm_latest @anthropic-ai/claude-code ;;
-    PLAYWRIGHT_MCP_VERSION) npm_latest @playwright/mcp ;;
-    CHROME_DEVTOOLS_MCP_VERSION) npm_latest chrome-devtools-mcp ;;
-    GO_VERSION) fetch 'https://go.dev/VERSION?m=text' | awk 'NR == 1 {sub(/^go/, ""); print}' ;;
-    RUST_VERSION)
-      fetch https://static.rust-lang.org/dist/channel-rust-stable.toml |
-        awk '/^\[/ {in_rust = ($0 == "[pkg.rust]")}
-             in_rust && !done && /^version = / {gsub(/"/, "", $3); print $3; done = 1}'
-      ;;
-    CLOUDFLARED_VERSION) gh_latest cloudflare/cloudflared ;;
-    JJ_VERSION) gh_latest jj-vcs/jj | sed 's/^v//' ;;
-    FNM_VERSION) gh_latest Schniz/fnm | sed 's/^v//' ;;
-    UV_VERSION) gh_latest astral-sh/uv ;;
-  esac
-}
-
-names=(NODE_VERSION T3_VERSION CLAUDE_CODE_VERSION PLAYWRIGHT_MCP_VERSION
-  CHROME_DEVTOOLS_MCP_VERSION GO_VERSION RUST_VERSION CLOUDFLARED_VERSION
-  JJ_VERSION FNM_VERSION UV_VERSION)
-
 rows=()
-for name in "${names[@]}"; do
+for script in "$here"/bump.d/*_VERSION.sh; do
+  name="$(basename "$script" .sh)"
   old="$(sed -n "s/^ARG $name=\([^[:space:]]*\).*/\1/p" "$file" | awk 'NR == 1')"
   if [[ -z "$old" ]]; then
     echo "ARG $name not found in $file" >&2
     exit 1
   fi
-  new="$(latest "$name")"
+  new="$("$script")"
   # guard against error pages or "null" from jq ending up in the Dockerfile
   if [[ ! "$new" =~ ^[0-9][0-9A-Za-z.+-]*$ ]]; then
     echo "bad upstream version for $name: '$new'" >&2
