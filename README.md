@@ -42,7 +42,7 @@ No projects are added automatically. t3 starts with `WORKSPACE` as its working d
 | Mount | What lives there |
 | --- | --- |
 | `/config` (named volume `config`) | `claude/` (`CLAUDE_CONFIG_DIR`, including `.claude.json` and credentials), `t3/` (`T3CODE_HOME`, server state and pairing), `gh/` (`GH_CONFIG_DIR`), `git/config` (`GIT_CONFIG_GLOBAL`), `jj/config.toml` (`JJ_CONFIG`), `ssh/` (linked to `~/.ssh`), `shell/bash_history`, `shell/bashrc.d/*.sh` (sourced by interactive shells) |
-| `/cache` (named volume `cache`) | `go/` (`GOPATH`, `GOMODCACHE`, `GOCACHE`), `cargo/` (`CARGO_HOME`), `uv/` (`UV_CACHE_DIR`, `UV_PYTHON_INSTALL_DIR`), `npm/` (`NPM_CONFIG_CACHE`), `fnm/` (`FNM_DIR`). Safe to delete. Remove the `cache` line in `compose.yaml` for an ephemeral cache |
+| `/cache` (named volume `cache`) | `go/` (`GOPATH`, `GOMODCACHE`, `GOCACHE`), `cargo/` (`CARGO_HOME`), `uv/` (`UV_CACHE_DIR`, `UV_PYTHON_INSTALL_DIR`), `npm/` (`NPM_CONFIG_CACHE`), `fnm/` (`FNM_DIR`), `npm-global/` (newer claude and t3 from `AUTO_UPDATE`). Safe to delete. Remove the `cache` line in `compose.yaml` for an ephemeral cache |
 | `WORKSPACE` | Bind mount of `WORKSPACE_HOST`. Default `./workspace` on the host, `/workspace` inside |
 
 On start the entrypoint creates missing subdirectories and chowns `/config` and `/cache` to `PUID:PGID` when they are not writable. It never chowns a populated workspace, it only warns.
@@ -94,6 +94,7 @@ Run with `docker compose exec harness <cmd>`.
 - `pair [--base-url URL] [--ttl 30d] [--label NAME]`: creates a pairing link on `PUBLIC_URL` (or `--base-url`) and prints it with a QR code.
 - `doctor`: tool versions, uid, mount types for `/config`, `/cache` and the workspace, claude and gh auth status, `fnm ls`, `claude mcp list`, health endpoint.
 - `register-mcp [--remove]`: adds or removes both browser MCPs. Idempotent.
+- `update-tools [--status]`: applies `AUTO_UPDATE` (see below), or shows image and overlay versions and which one is on `PATH`. The entrypoint runs it on every start.
 
 ## Updating
 
@@ -103,7 +104,26 @@ docker compose pull && docker compose up -d
 
 To stay on a version, set `IMAGE=ghcr.io/xaroth/harness:vX.Y.Z` in `.env`.
 
-Do not run `t3 update` inside the container. Claude Code's auto-updater is disabled. New versions come from image updates.
+Do not run `t3 update` inside the container. Claude Code's auto-updater is disabled. New versions come from image updates, or from `AUTO_UPDATE` below.
+
+### Updating claude and t3 on start
+
+Claude Code and t3 release often. To pick up new versions without waiting for an image, set `AUTO_UPDATE` in `.env`:
+
+```sh
+AUTO_UPDATE=claude,t3                  # latest of both
+AUTO_UPDATE=claude,t3@preview          # any npm dist-tag
+AUTO_UPDATE=claude@2.1.290             # pin, also to roll back
+```
+
+On every start the entrypoint runs `update-tools` before t3. For each listed tool it asks npm which version the spec resolves to. If the image already has it, nothing is installed. Otherwise it `npm install -g`s that version into `/cache/npm-global`, which is ahead of `/opt/npm-global` on `PATH`. The overlay survives restarts and recreates, so a restart with nothing new costs about a second. A restart with an update adds a few seconds.
+
+- A restart picks up new releases: `docker compose restart`. Claude starts per session, so new threads use the new Claude; t3 is the server and only changes on restart.
+- If npm is unreachable, the current version stays. If an install fails, times out (`AUTO_UPDATE_TIMEOUT`, default 120 s) or the new binary does not run, the overlay copy is removed and the image copy is used.
+- A tool removed from `AUTO_UPDATE` has its overlay copy removed on the next start. Once a pulled image catches up, the overlay copy is dropped too.
+- `doctor` and `update-tools --status` show the image version, the overlay version, and which one is in use.
+
+This runs a claude and t3 pair that CI did not test together, which the bump PR otherwise guarantees. If something breaks, pin the last good version or clear `AUTO_UPDATE` and restart.
 
 How releases happen:
 
@@ -131,7 +151,7 @@ docker compose build
 docker build -t harness:dev .
 ```
 
-Smoke test (36 checks: health, tool versions, uid, volume perms, MCP registration and handshake, node-pty prebuilt, Node on PATH, Claude config location):
+Smoke test (45 checks: health, tool versions, uid, volume perms, MCP registration and handshake, node-pty prebuilt, Node on PATH, auto-update overlay, Claude config location, sshd):
 
 ```sh
 docker run -d --name harness-smoke -e PUID=1000 -e PGID=1000 -e SSHD=1 \

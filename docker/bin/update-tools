@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# Installs newer claude and/or t3 into an overlay prefix on /cache that sits
+# ahead of the image's /opt/npm-global on PATH. Driven by AUTO_UPDATE, e.g.
+# "claude,t3" or "claude@2.1.290 t3@latest". Tools not listed are removed
+# from the overlay so the image copy wins again. Never fails the boot: any
+# error leaves the image copy in charge.
+# Usage: update-tools [--status]
+set -euo pipefail
+
+if [ "$(id -u)" = 0 ]; then
+  exec gosu code "$0" "$@"
+fi
+
+OVERLAY="${AUTO_UPDATE_PREFIX:-/cache/npm-global}"
+IMAGE_PREFIX=/opt/npm-global
+TIMEOUT="${AUTO_UPDATE_TIMEOUT:-120}"
+TOOLS=(claude t3)
+
+log() { printf '[update-tools] %s\n' "$*" >&2; }
+
+pkg_of() {
+  case "$1" in
+    claude) echo @anthropic-ai/claude-code ;;
+    t3) echo t3 ;;
+    *) return 1 ;;
+  esac
+}
+
+installed_version() {
+  local f="$1/lib/node_modules/$2/package.json"
+  if [ -f "$f" ]; then jq -r .version "$f" 2>/dev/null || true; fi
+}
+
+remove_overlay() {
+  local pkg="$1"
+  [ -d "$OVERLAY/lib/node_modules/$pkg" ] || return 0
+  npm uninstall -g --prefix "$OVERLAY" --loglevel=error "$pkg" >/dev/null 2>&1 \
+    || rm -rf "${OVERLAY:?}/lib/node_modules/$pkg"
+  # npm leaves a dangling bin link behind when the package dir is already gone
+  find "$OVERLAY/bin" -maxdepth 1 -xtype l -delete 2>/dev/null || true
+}
+
+status() {
+  local tool pkg img ovl active
+  printf 'AUTO_UPDATE=%s\n' "${AUTO_UPDATE:-}"
+  for tool in "${TOOLS[@]}"; do
+    pkg="$(pkg_of "$tool")"
+    img="$(installed_version "$IMAGE_PREFIX" "$pkg")"
+    ovl="$(installed_version "$OVERLAY" "$pkg")"
+    active="$(command -v "$tool" || echo missing)"
+    printf '%-7s image %-12s overlay %-12s using %s\n' "$tool" "${img:--}" "${ovl:--}" "$active"
+  done
+}
+
+# update TOOL SPEC: make the overlay hold SPEC's version, or nothing when the
+# image already has it.
+update() {
+  local tool="$1" spec="$2" pkg wanted img ovl
+  pkg="$(pkg_of "$tool")"
+  if ! wanted="$(timeout 30 npm view "$pkg@$spec" version --json 2>/dev/null \
+      | jq -r 'if type == "array" then .[-1] else . end')" || [ -z "$wanted" ] || [ "$wanted" = null ]; then
+    log "$tool: cannot resolve $pkg@$spec, keeping current"
+    return 0
+  fi
+  img="$(installed_version "$IMAGE_PREFIX" "$pkg")"
+  ovl="$(installed_version "$OVERLAY" "$pkg")"
+
+  if [ "$wanted" = "$img" ]; then
+    if [ -n "$ovl" ]; then
+      log "$tool: image has $img, dropping overlay $ovl"
+      remove_overlay "$pkg"
+    else
+      log "$tool: image $img is current"
+    fi
+    return 0
+  fi
+  if [ "$wanted" = "$ovl" ]; then
+    log "$tool: $ovl (overlay, image has $img)"
+    return 0
+  fi
+
+  log "$tool: installing $wanted (image has $img${ovl:+, overlay had $ovl})"
+  if ! timeout "$TIMEOUT" npm install -g --prefix "$OVERLAY" --no-fund --no-audit \
+      --loglevel=error "$pkg@$wanted" >&2; then
+    log "$tool: install failed or timed out after ${TIMEOUT}s, falling back to image $img"
+    remove_overlay "$pkg"
+    return 0
+  fi
+  if ! timeout 30 "$OVERLAY/bin/$tool" --version >/dev/null 2>&1; then
+    log "$tool: $wanted does not run, falling back to image $img"
+    remove_overlay "$pkg"
+  fi
+}
+
+main() {
+  local -A want=()
+  local entry tool spec
+  for entry in ${AUTO_UPDATE//,/ }; do
+    tool="${entry%%@*}"
+    spec=latest
+    [ "$entry" != "$tool" ] && spec="${entry#*@}"
+    if ! pkg_of "$tool" >/dev/null; then
+      log "warning: unknown tool '$tool' in AUTO_UPDATE (known: ${TOOLS[*]})"
+      continue
+    fi
+    want[$tool]="$spec"
+  done
+
+  mkdir -p "$OVERLAY"
+  for tool in "${TOOLS[@]}"; do
+    if [ -n "${want[$tool]:-}" ]; then
+      update "$tool" "${want[$tool]}" || log "$tool: update failed, keeping current"
+    elif [ -d "$OVERLAY/lib/node_modules/$(pkg_of "$tool")" ]; then
+      log "$tool: not in AUTO_UPDATE, dropping overlay"
+      remove_overlay "$(pkg_of "$tool")"
+    fi
+  done
+}
+
+case "${1:-}" in
+  --status) status ;;
+  "") main ;;
+  *) echo "usage: update-tools [--status]" >&2; exit 2 ;;
+esac

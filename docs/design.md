@@ -23,6 +23,7 @@ from the old draft survives.
 | VCS | jj colocated, author `Xaroth Brook <xaroth+github@xaroth.nl>`, MIT, no remote yet |
 | Registry | `ghcr.io/xaroth/harness`, `:latest` on main, `:vX.Y.Z` on tag |
 | Updates | weekly night cron + manual, one bump PR, merge auto-tags a patch |
+| Auto-update | opt-in `AUTO_UPDATE=claude,t3[@spec]`: `update-tools` at boot npm-installs newer versions into `/cache/npm-global`, ahead of `/opt/npm-global` on PATH; falls back to the image copy on any failure (agreed 2026-10-01) |
 | sshd | opt-in `SSHD=1`, key auth, user code, host key on /config; for t3's open-in-editor VS Code Remote SSH link (`<hostname>.local`) |
 | Telemetry | off by default (`T3_TELEMETRY=0`), PostHog and OTel both disabled |
 | CI check | boot, health endpoint, `--version` for each tool, MCP handshake, volume perms |
@@ -47,6 +48,7 @@ harness/
       pair                     t3 auth pairing create --base-url ... + QR
       doctor                   what's installed, signed in, healthy
       register-mcp             claude mcp add for both browser servers (idempotent)
+      update-tools             AUTO_UPDATE overlay for claude/t3 in /cache/npm-global
   scripts/
     smoke-test.sh              runs smoke.d/NN-*.sh in order against a booted container
     smoke.d/                   one file per check group, _lib.sh shared helpers
@@ -119,14 +121,14 @@ HISTFILE=/config/shell/bash_history
 GOPATH=/cache/go  GOMODCACHE=/cache/go/pkg/mod  GOCACHE=/cache/go/build
 CARGO_HOME=/cache/cargo  RUSTUP_HOME=/opt/rustup
 UV_CACHE_DIR=/cache/uv  UV_PYTHON_INSTALL_DIR=/cache/uv/python
-NPM_CONFIG_CACHE=/cache/npm  NPM_CONFIG_PREFIX=/opt/npm-global
+NPM_CONFIG_CACHE=/cache/npm  NPM_CONFIG_PREFIX=/opt/npm-global  AUTO_UPDATE_PREFIX=/cache/npm-global
 FNM_DIR=/cache/fnm
 SHELL=/bin/bash  DISABLE_AUTOUPDATER=1
 CHROME_PATH=/usr/bin/chromium  PUPPETEER_SKIP_DOWNLOAD=1
 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 T3CODE_HOST=0.0.0.0  T3CODE_PORT=3773
 T3CODE_CLOUDFLARED_PATH=/usr/local/bin/cloudflared
-PATH=/opt/npm-global/bin:/usr/local/go/bin:/opt/cargo/bin:/cache/go/bin:/cache/fnm/aliases/default/bin:$PATH
+PATH=/cache/npm-global/bin:/opt/npm-global/bin:/usr/local/go/bin:/opt/cargo/bin:/cache/go/bin:/cache/fnm/aliases/default/bin:$PATH
 ```
 
 PATH order matters: `/usr/local/bin/node` (image) comes before fnm's default alias,
@@ -150,6 +152,7 @@ User half:
     alias exists, `fnm default $NODE_VERSION`. Image Node shows up in `fnm ls` and a
     rebuild with a newer Node re-links automatically.
 2. `register-mcp` (skips if already registered).
+2b. `update-tools`: apply `AUTO_UPDATE` to the `/cache/npm-global` overlay, or empty it.
 3. Map `T3_TELEMETRY=0` to `T3CODE_TELEMETRY_ENABLED=false` and `T3CODE_OTEL_SDK_DISABLED=true`.
 4. If `$1` is `serve`: `exec t3 serve --host 0.0.0.0 --port 3773 "$WORKSPACE"`. Else `exec "$@"`.
 
