@@ -7,7 +7,7 @@ CONFIG_DIRS=(/config /config/claude /config/t3 /config/gh /config/git /config/jj
   /config/shell /config/shell/bashrc.d /config/ssh)
 CACHE_DIRS=(/cache /cache/go /cache/go/pkg/mod /cache/go/build /cache/go/bin
   /cache/cargo /cache/uv /cache/uv/python /cache/npm /cache/fnm
-  /cache/fnm/node-versions /cache/fnm/aliases)
+  /cache/fnm/node-versions /cache/fnm/aliases /cache/npm-global)
 
 WORKSPACE="${WORKSPACE:-/workspace}"
 
@@ -64,7 +64,7 @@ root_half() {
 HARNESS_ENV_VARS=(WORKSPACE NODE_VERSION CLAUDE_CONFIG_DIR T3CODE_HOME GH_CONFIG_DIR
   GIT_CONFIG_GLOBAL JJ_CONFIG HISTFILE GOPATH GOMODCACHE GOCACHE CARGO_HOME
   RUSTUP_HOME UV_CACHE_DIR UV_PYTHON_INSTALL_DIR NPM_CONFIG_CACHE
-  NPM_CONFIG_PREFIX FNM_DIR DISABLE_AUTOUPDATER CHROME_PATH
+  NPM_CONFIG_PREFIX FNM_DIR AUTO_UPDATE_PREFIX DISABLE_AUTOUPDATER CHROME_PATH
   PUPPETEER_SKIP_DOWNLOAD PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
   T3CODE_HOST T3CODE_PORT T3CODE_CLOUDFLARED_PATH)
 
@@ -154,6 +154,8 @@ user_half() {
   link_fnm_node
 
   register-mcp || log "register-mcp failed; run it manually later"
+  # newer claude/t3 from AUTO_UPDATE; a no-op without network when unset
+  update-tools || log "update-tools failed; using the image versions"
 
   if [ "${T3_TELEMETRY:-0}" = 0 ]; then
     export T3CODE_TELEMETRY_ENABLED=false T3CODE_OTEL_SDK_DISABLED=true

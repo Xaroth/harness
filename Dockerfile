@@ -56,7 +56,8 @@ ENV GOPATH=/cache/go \
     UV_CACHE_DIR=/cache/uv \
     UV_PYTHON_INSTALL_DIR=/cache/uv/python \
     NPM_CONFIG_CACHE=/cache/npm \
-    FNM_DIR=/cache/fnm
+    FNM_DIR=/cache/fnm \
+    AUTO_UPDATE_PREFIX=/cache/npm-global
 
 # tool settings
 ENV NODE_VERSION=${NODE_VERSION} \
@@ -71,7 +72,7 @@ ENV NODE_VERSION=${NODE_VERSION} \
     T3CODE_HOST=0.0.0.0 \
     T3CODE_PORT=3773 \
     T3CODE_CLOUDFLARED_PATH=/usr/local/bin/cloudflared \
-    PATH=/opt/npm-global/bin:/opt/node/current/bin:/usr/local/go/bin:/opt/cargo/bin:/cache/go/bin:$PATH
+    PATH=/cache/npm-global/bin:/opt/npm-global/bin:/opt/node/current/bin:/usr/local/go/bin:/opt/cargo/bin:/cache/go/bin:$PATH
 
 VOLUME ["/config", "/cache"]
 EXPOSE 3773
