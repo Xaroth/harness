@@ -5,7 +5,7 @@ log() { printf '[entrypoint] %s\n' "$*" >&2; }
 
 CONFIG_DIRS=(/config /config/claude /config/t3 /config/gh /config/git /config/jj
   /config/shell /config/shell/bashrc.d /config/ssh)
-CACHE_DIRS=(/cache /cache/go /cache/go/pkg/mod /cache/go/build /cache/go/bin
+CACHE_DIRS=(/cache /cache/go /cache/go/pkg /cache/go/pkg/mod /cache/go/build /cache/go/bin
   /cache/cargo /cache/uv /cache/uv/python /cache/npm /cache/fnm
   /cache/fnm/node-versions /cache/fnm/aliases /cache/npm-global)
 
