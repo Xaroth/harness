@@ -39,7 +39,7 @@ python3
 python3-dev
 python3-venv
 
-# wails v3 apps on linux (default gtk4 build; -tags gtk3 is not covered)
+# Webkit
 libgtk-4-dev
 libwebkitgtk-6.0-dev
 

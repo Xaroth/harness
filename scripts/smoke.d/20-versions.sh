@@ -7,7 +7,7 @@ done
 # go and ffmpeg have no --version flag
 check "go version" ux go version
 check "ffmpeg -version" ux ffmpeg -version
-# wails v3 cgo deps
+# webkit
 check "pkg-config gtk4 webkitgtk-6.0" ux pkg-config --exists gtk4 webkitgtk-6.0
 
 out="$(ux gh --version 2>&1)" || fail "gh --version"
