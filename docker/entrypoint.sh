@@ -111,11 +111,13 @@ prepare_keyring_env() {
   chmod 0700 "$XDG_RUNTIME_DIR"
 }
 
-# Throwaway keyring: empty password, unlocked for the container's lifetime.
+# Throwaway keyring, unlocked for the container's lifetime. An empty password
+# skips creating the login collection, so use a fixed one.
 start_keyring() {
   export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/runtime-$(id -u)}"
   export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
-  mkdir -p -m 0700 "$XDG_RUNTIME_DIR"
+  mkdir -p "$XDG_RUNTIME_DIR"
+  chmod 0700 "$XDG_RUNTIME_DIR"
   # stale socket from a previous run of this container
   rm -f "${DBUS_SESSION_BUS_ADDRESS#unix:path=}"
   if ! dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --fork --nopidfile; then
@@ -123,8 +125,8 @@ start_keyring() {
     unset DBUS_SESSION_BUS_ADDRESS
     return 0
   fi
-  if printf '' | gnome-keyring-daemon --unlock --components=secrets >/dev/null; then
-    log "Secret Service running on $DBUS_SESSION_BUS_ADDRESS (throwaway keyring, empty password)"
+  if printf harness | gnome-keyring-daemon --unlock --components=secrets >/dev/null; then
+    log "Secret Service running on $DBUS_SESSION_BUS_ADDRESS (throwaway keyring)"
   else
     log "warning: gnome-keyring-daemon failed, keyring not available"
   fi
