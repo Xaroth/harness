@@ -115,7 +115,8 @@ prepare_keyring_env() {
 start_keyring() {
   export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/runtime-$(id -u)}"
   export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
-  mkdir -p -m 0700 "$XDG_RUNTIME_DIR"
+  mkdir -p "$XDG_RUNTIME_DIR"
+  chmod 0700 "$XDG_RUNTIME_DIR"
   # stale socket from a previous run of this container
   rm -f "${DBUS_SESSION_BUS_ADDRESS#unix:path=}"
   if ! dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --fork --nopidfile; then
