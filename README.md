@@ -91,7 +91,7 @@ No mDNS needed; VS Code Remote SSH resolves the name through that file. Paths in
 
 Apps that store secrets through the Secret Service (libsecret, `zalando/go-keyring`, `keytar`) need a D-Bus session bus and a keyring daemon. Opt in with `KEYRING=1` in `.env`. The entrypoint then starts `dbus-daemon` on `unix:path=/run/user/<uid>/bus` and an unlocked `gnome-keyring-daemon`, and exports `DBUS_SESSION_BUS_ADDRESS` to t3, login shells and ssh sessions. `secret-tool` is installed for debugging.
 
-The keyring has an empty password and lives in the container filesystem, so it is lost when the container is recreated. Don't store real credentials in it.
+The keyring password is the fixed string `harness`, and the keyring lives in the container filesystem, so it is lost when the container is recreated. Don't store real credentials in it.
 
 ## Helpers
 
