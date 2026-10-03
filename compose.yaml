@@ -13,6 +13,7 @@ services:
       PUBLIC_URL: ${PUBLIC_URL:-}
       T3_TELEMETRY: ${T3_TELEMETRY:-0}
       SSHD: ${SSHD:-0}
+      KEYRING: ${KEYRING:-0}
       AUTO_UPDATE: ${AUTO_UPDATE:-}
       AUTO_UPDATE_TIMEOUT: ${AUTO_UPDATE_TIMEOUT:-120}
     volumes:

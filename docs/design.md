@@ -25,6 +25,7 @@ from the old draft survives.
 | Updates | weekly night cron + manual, one bump PR, merge auto-tags a patch |
 | Auto-update | opt-in `AUTO_UPDATE=claude,t3[@spec]`: `update-tools` at boot npm-installs newer versions into `/cache/npm-global`, ahead of `/opt/npm-global` on PATH; falls back to the image copy on any failure (agreed 2026-10-01) |
 | sshd | opt-in `SSHD=1`, key auth, user code, host key on /config; for t3's open-in-editor VS Code Remote SSH link (`<hostname>.local`) |
+| Keyring | opt-in `KEYRING=1`, session D-Bus at `/run/user/<uid>/bus` plus unlocked gnome-keyring, empty password, throwaway |
 | Telemetry | off by default (`T3_TELEMETRY=0`), PostHog and OTel both disabled |
 | CI check | boot, health endpoint, `--version` for each tool, MCP handshake, volume perms |
 
