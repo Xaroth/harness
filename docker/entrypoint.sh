@@ -53,6 +53,7 @@ root_half() {
     log "warning: workspace $WORKSPACE not writable by uid $puid; fix ownership on the host"
   fi
 
+  [ "${KEYRING:-0}" = 1 ] && prepare_keyring_env "$puid" "$pgid"
   write_profile_env
   [ "${SSHD:-0}" = 1 ] && start_sshd
 
@@ -66,7 +67,8 @@ HARNESS_ENV_VARS=(WORKSPACE NODE_VERSION CLAUDE_CONFIG_DIR T3CODE_HOME GH_CONFIG
   RUSTUP_HOME UV_CACHE_DIR UV_PYTHON_INSTALL_DIR NPM_CONFIG_CACHE
   NPM_CONFIG_PREFIX FNM_DIR AUTO_UPDATE_PREFIX DISABLE_AUTOUPDATER CHROME_PATH
   PUPPETEER_SKIP_DOWNLOAD PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD
-  T3CODE_HOST T3CODE_PORT T3CODE_CLOUDFLARED_PATH)
+  T3CODE_HOST T3CODE_PORT T3CODE_CLOUDFLARED_PATH
+  XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS)
 
 write_profile_env() {
   local v
@@ -97,6 +99,34 @@ start_sshd() {
     log "sshd listening on 22 (user code, keys from /config/ssh/authorized_keys)"
   else
     log "warning: sshd config test failed, not starting sshd"
+  fi
+}
+
+# Fixed bus address so ssh sessions and docker exec login shells can find it.
+prepare_keyring_env() {
+  export XDG_RUNTIME_DIR="/run/user/$1"
+  export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+  mkdir -p "$XDG_RUNTIME_DIR"
+  chown "$1:$2" "$XDG_RUNTIME_DIR"
+  chmod 0700 "$XDG_RUNTIME_DIR"
+}
+
+# Throwaway keyring: empty password, unlocked for the container's lifetime.
+start_keyring() {
+  export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp/runtime-$(id -u)}"
+  export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+  mkdir -p -m 0700 "$XDG_RUNTIME_DIR"
+  # stale socket from a previous run of this container
+  rm -f "${DBUS_SESSION_BUS_ADDRESS#unix:path=}"
+  if ! dbus-daemon --session --address="$DBUS_SESSION_BUS_ADDRESS" --fork --nopidfile; then
+    log "warning: dbus-daemon failed, keyring not available"
+    unset DBUS_SESSION_BUS_ADDRESS
+    return 0
+  fi
+  if printf '' | gnome-keyring-daemon --unlock --components=secrets >/dev/null; then
+    log "Secret Service running on $DBUS_SESSION_BUS_ADDRESS (throwaway keyring, empty password)"
+  else
+    log "warning: gnome-keyring-daemon failed, keyring not available"
   fi
 }
 
@@ -152,6 +182,7 @@ user_half() {
   touch "${GIT_CONFIG_GLOBAL:-/config/git/config}"
 
   link_fnm_node
+  [ "${KEYRING:-0}" = 1 ] && start_keyring
 
   register-mcp || log "register-mcp failed; run it manually later"
   # newer claude/t3 from AUTO_UPDATE; a no-op without network when unset

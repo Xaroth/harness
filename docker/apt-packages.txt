@@ -43,6 +43,11 @@ python3-venv
 libgtk-4-dev
 libwebkitgtk-6.0-dev
 
+# opt-in Secret Service (KEYRING=1) for apps using the OS keyring
+dbus-x11
+gnome-keyring
+libsecret-tools
+
 # media and data
 ffmpeg
 imagemagick

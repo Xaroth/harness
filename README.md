@@ -87,6 +87,12 @@ Host harness.local
 
 No mDNS needed; VS Code Remote SSH resolves the name through that file. Paths in the link match because the workspace is mounted at the same path inside. Change `CONTAINER_HOSTNAME` to use a different name. ssh sessions get the same PATH and config env as the server does, via `/etc/profile.d`.
 
+## OS keyring
+
+Apps that store secrets through the Secret Service (libsecret, `zalando/go-keyring`, `keytar`) need a D-Bus session bus and a keyring daemon. Opt in with `KEYRING=1` in `.env`. The entrypoint then starts `dbus-daemon` on `unix:path=/run/user/<uid>/bus` and an unlocked `gnome-keyring-daemon`, and exports `DBUS_SESSION_BUS_ADDRESS` to t3, login shells and ssh sessions. `secret-tool` is installed for debugging.
+
+The keyring has an empty password and lives in the container filesystem, so it is lost when the container is recreated. Don't store real credentials in it.
+
 ## Helpers
 
 Run with `docker compose exec harness <cmd>`.
@@ -151,10 +157,10 @@ docker compose build
 docker build -t harness:dev .
 ```
 
-Smoke test (45 checks: health, tool versions, uid, volume perms, MCP registration and handshake, node-pty prebuilt, Node on PATH, auto-update overlay, Claude config location, sshd):
+Smoke test (46 checks: health, tool versions, uid, volume perms, MCP registration and handshake, node-pty prebuilt, Node on PATH, auto-update overlay, Claude config location, sshd, keyring):
 
 ```sh
-docker run -d --name harness-smoke -e PUID=1000 -e PGID=1000 -e SSHD=1 \
+docker run -d --name harness-smoke -e PUID=1000 -e PGID=1000 -e SSHD=1 -e KEYRING=1 \
   -v smoke-config:/config -v smoke-cache:/cache --shm-size 1g harness:dev
 scripts/smoke-test.sh harness-smoke
 ```
